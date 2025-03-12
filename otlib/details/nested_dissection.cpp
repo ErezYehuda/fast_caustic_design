@@ -1,11 +1,3 @@
-// This file is part of otmap, an optimal transport solver.
-//
-// Copyright (C) 2018 Gael Guennebaud <gael.guennebaud@inria.fr>
-//
-// This Source Code Form is subject to the terms of the Mozilla
-// Public License v. 2.0. If a copy of the MPL was not distributed
-// with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 #include <Eigen/Core>
 #include <cassert>
 
@@ -53,13 +45,13 @@ void nestdiss_ordering_impl(int i0, int j0, int rows, int cols, int stride, int*
   }
 }
 
-void nestdiss_ordering(int size, int* perm)
+void nestdiss_ordering(int width, int height, int* perm)
 {
   int* p = perm;
-  nestdiss_ordering_impl(0, 0, size, size, size, p);
-  assert(perm+size*size == p);
+  nestdiss_ordering_impl(0, 0, width, width, width, p);
+  assert(perm+width*width == p);
   // reverse order (separators are last)
-  VectorXi::Map(perm,size*size).reverseInPlace();
+  VectorXi::Map(perm,width*width).reverseInPlace();
 }
 
 } // namespace otmap

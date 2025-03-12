@@ -195,7 +195,7 @@ apply_inverse_map(const otmap::TransportMap& tmap, std::vector<Vector2d> &points
   bvh_queries = timer.value(REAL_TIMER);
 
   if(verbose_level>=2)
-    std::cout << "Inversion: bvh_init(" << bvh_init << ") + bvh_queries(" << bvh_queries << ") = " << bvh_init+bvh_queries << "\n";
+    std::cout << "apply_inverse_map: Inversion: bvh_init(" << bvh_init << ") + bvh_queries(" << bvh_queries << ") = " << bvh_init+bvh_queries << "\n";
 }
 
 void
@@ -220,7 +220,7 @@ apply_forward_map(const otmap::TransportMap& tmap, std::vector<Vector2d> &points
   bvh_queries = timer.value(REAL_TIMER);
 
   if(verbose_level>=2)
-    std::cout << "Inversion: bvh_init(" << bvh_init << ") + bvh_queries(" << bvh_queries << ") = " << bvh_init+bvh_queries << "\n";
+    std::cout << "apply_forward_map: Inversion: bvh_init(" << bvh_init << ") + bvh_queries(" << bvh_queries << ") = " << bvh_init+bvh_queries << "\n";
 }
 
 

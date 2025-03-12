@@ -37,11 +37,11 @@ bool load_input_density(const std::string& filename, MatrixXd& density)
     load_image(filename.c_str(), density);
     if(density.size()==0)
       return false;
-    if(density.rows()!=density.cols())
+    /*if(density.rows()!=density.cols())
     {
       std::cout << "Error: input image \"" << filename << "\" is not square.";
       return false;
-    }
+    }*/
   }
   return true;
 }
@@ -62,7 +62,7 @@ void generate_transport_maps(const std::vector<std::string>& inputs, std::vector
       std::cout << "Failed to load input #" << k << " \"" << inputs[k] << "\" -> abort.";
       exit(EXIT_FAILURE);
     }
-    otsolver.init(density.rows());
+    otsolver.init(density.cols(), density.rows());
     filter(density);
     tmaps.push_back( otsolver.solve(vec(density), opts.solver_opt) );
   }

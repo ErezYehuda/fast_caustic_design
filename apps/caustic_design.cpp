@@ -407,7 +407,7 @@ TransportMap runOptimalTransport(MatrixXd &density, CLIopts &opts) {
   BenchTimer t_solver_init, t_solver_compute, t_generate_uniform;
 
   t_solver_init.start();
-  otsolver.init(density.rows());
+  otsolver.init(density.cols(), density.rows());
   t_solver_init.stop();
 
   std::cout << "init\n";
@@ -419,21 +419,6 @@ TransportMap runOptimalTransport(MatrixXd &density, CLIopts &opts) {
   std::cout << "STATS solver -- init: " << t_solver_init.value(REAL_TIMER) << "s  solve: " << t_solver_compute.value(REAL_TIMER) << "s\n";
 
   return tmap_src;
-}
-
-void applyTransportMapping(TransportMap &tmap_src, TransportMap &tmap_trg, MatrixXd &density_trg, std::vector<Eigen::Vector2d> &vertex_positions) {
-  Surface_mesh map_uv = tmap_src.fwd_mesh();
-  Surface_mesh map_orig = tmap_src.origin_mesh();
-
-  apply_inverse_map(tmap_trg, map_uv.points(), 3);
-
-  auto originMeshPtr = std::make_shared<surface_mesh::Surface_mesh>(map_uv);
-  auto fwdMeshPtr = std::make_shared<surface_mesh::Surface_mesh>(map_orig);
-  auto densityPtr = std::make_shared<Eigen::VectorXd>(density_trg);
-
-  TransportMap transport(originMeshPtr, fwdMeshPtr, densityPtr);
-  
-  apply_inverse_map(transport, vertex_positions, 3);
 }
 
 std::vector<double> cross(std::vector<double> v1, std::vector<double> v2){
@@ -703,6 +688,23 @@ Eigen::MatrixXd scaleAndTranslate(const Eigen::MatrixXd& mat, double newMin, dou
     Eigen::MatrixXd scaled = (mat.array() - oldMin) * (newMax - newMin) / (oldMax - oldMin) + newMin;
 
     return scaled;
+}
+
+void applyTransportMapping(TransportMap &tmap_src, TransportMap &tmap_trg, MatrixXd &density_trg, std::vector<Eigen::Vector2d> &vertex_positions) {
+  Surface_mesh map_uv = tmap_src.fwd_mesh();
+  Surface_mesh map_orig = tmap_src.origin_mesh();
+
+  std::cerr << "density_trg dimensions: " << density_trg.rows() << " x " << density_trg.cols() << std::endl;
+
+  apply_inverse_map(tmap_trg, map_uv.points(), 3);
+
+  std::shared_ptr<surface_mesh::Surface_mesh> originMeshPtr = std::make_shared<surface_mesh::Surface_mesh>(map_uv);
+  std::shared_ptr<surface_mesh::Surface_mesh> fwdMeshPtr = std::make_shared<surface_mesh::Surface_mesh>(map_orig);
+  std::shared_ptr<Eigen::VectorXd> densityPtr = std::make_shared<Eigen::VectorXd>(Map<VectorXd>(density_trg.data(), density_trg.size()));
+
+  TransportMap transport(originMeshPtr, fwdMeshPtr, densityPtr);
+  
+  apply_inverse_map(transport, vertex_positions, 3);
 }
 
 int main(int argc, char** argv)

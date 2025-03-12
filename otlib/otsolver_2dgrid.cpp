@@ -74,7 +74,7 @@ adjust_density(VectorXd& density, double max_ratio)
 
 void
 GridBasedTransportSolver::
-init(int n)
+init(unsigned int m, unsigned int n)
 {
   /*if(m_gridSize==n)
   {
@@ -87,14 +87,18 @@ init(int n)
   BenchTimer timer;
   timer.start();
 
-  m_gridSize = n;
-  m_pb_size = n*n;
+  m_gridSize_m = m;
+  m_gridSize_n = n;
+  m_pb_size = m*n;
   
-  if(m_mesh!=nullptr) m_mesh.reset(new Surface_mesh);
-  else                m_mesh = std::make_shared<Surface_mesh>();
-  generate_quad_mesh(n+1, n+1, *m_mesh);
+  if(m_mesh!=nullptr) {
+    m_mesh.reset(new Surface_mesh);
+  } else {
+    m_mesh = std::make_shared<Surface_mesh>();
+  }
+  generate_quad_mesh(m+1, n+1, *m_mesh);
 
-  m_element_area = 1.0/(double(n)*double(n));
+  m_element_area = 1.0/(double(m)*double(n));
   
   this->initialize_laplacian_solver();
   timer.stop();
@@ -271,8 +275,8 @@ initialize_laplacian_solver()
   int nv  = m_mesh->vertices_size();
   int nf  = m_mesh->faces_size();
 
-  assert((m_gridSize+1)*(m_gridSize+1)==nv);
-  assert(m_gridSize*m_gridSize==nf);
+  assert((m_gridSize_m+1)*(m_gridSize_n+1)==nv);
+  assert(m_gridSize_m*m_gridSize_n==nf);
 
   timer.start();
   {
@@ -284,8 +288,8 @@ initialize_laplacian_solver()
     // Make L positive by directly forming  -L:
     double w = -0.5;
     // For each face
-    for(int i=0; i<m_gridSize; ++i){
-      for(int j=0; j<m_gridSize; ++j){
+    for(int i=0; i<m_gridSize_n; ++i){
+      for(int j=0; j<m_gridSize_m; ++j){
         int id = make_face_index(i,j);
         double sw = 0;
         // Laplacian mask:
@@ -295,8 +299,8 @@ initialize_laplacian_solver()
         // This mask correspond to the used gradient
         int row_id_1 = i == 0 ? i : i-1;
         int col_id_1 = j == 0 ? j : j-1;
-        int row_id_2 = i == m_gridSize-1 ? i : i+1;
-        int col_id_2 = j == m_gridSize-1 ? j : j+1;
+        int row_id_2 = i == m_gridSize_n-1 ? i : i+1;
+        int col_id_2 = j == m_gridSize_m-1 ? j : j+1;
 
         L_entries.push_back(Triplet(id, make_face_index(row_id_1, col_id_1), w)); sw+=w;
         L_entries.push_back(Triplet(id, make_face_index(row_id_1, col_id_2), w)); sw+=w;
@@ -334,7 +338,7 @@ initialize_laplacian_solver()
 
     // Compute custom fill-in permutation
     PermutationMatrix<Dynamic,Dynamic,int> perm(nf);
-    nestdiss_ordering(m_gridSize,perm.indices().data());
+    nestdiss_ordering(m_gridSize_m, m_gridSize_n, perm.indices().data());
     
     // Apply the permutation to reorder the Laplacian matrix
     Eigen::SparseMatrix<double> L_permuted = perm * m_mat_L * perm.transpose();
@@ -377,12 +381,15 @@ compute_vertex_gradients(ConstRefVector psi, MatrixX2d& vtx_grads) const
   using namespace Eigen::internal;
   typedef packet_traits<double>::type Packet;
   const Index PacketSize = packet_traits<double>::size;
-  Index simd_size = ((m_gridSize-1)/PacketSize)*PacketSize;
+  Index simd_size = ((m_gridSize_n-1)/PacketSize)*PacketSize;
 
-  double w = double(m_gridSize);
-  Packet pw05 = pset1<Packet>(0.5*w);
+  double w_m = double(m_gridSize_m);
+  double w_n = double(m_gridSize_n);
+  Packet pw05_m = pset1<Packet>(0.5*w_m);
+  Packet pw05_n = pset1<Packet>(0.5*w_n);
+  
   // inner cells:
-  for(Index i=1; i<m_gridSize; ++i){
+  for(Index i=1; i<m_gridSize_m; ++i){
     int fid0 = make_face_index(i-1,0);
     int fid1 = make_face_index(i,0);
     int vid = make_vtx_index(i,0);
@@ -392,53 +399,57 @@ compute_vertex_gradients(ConstRefVector psi, MatrixX2d& vtx_grads) const
       Packet p01 = psi.packet<Unaligned>(fid0+j);
       Packet p10 = psi.packet<Unaligned>(fid1+j-1);
       Packet p11 = psi.packet<Unaligned>(fid1+j);
-      vtx_grads.writePacket<Unaligned>(vid+j,0, pmul(pw05,psub(padd(p10,p11),padd(p00,p01))));
-      vtx_grads.writePacket<Unaligned>(vid+j,1, pmul(pw05,psub(padd(p01,p11),padd(p00,p10))));
+      vtx_grads.writePacket<Unaligned>(vid+j,0, pmul(pw05_m,psub(padd(p10,p11),padd(p00,p01))));
+      vtx_grads.writePacket<Unaligned>(vid+j,1, pmul(pw05_n,psub(padd(p01,p11),padd(p00,p10))));
     }
 
     double p00 = psi(fid0+simd_size-1);
     double p10 = psi(fid1+simd_size-1);
-    for(Index j=simd_size; j<m_gridSize; ++j){
+    for(Index j=simd_size; j<m_gridSize_n; ++j){
       double p01 = psi(fid0+j);
       double p11 = psi(fid1+j);
-      vtx_grads(vid+j,0) = 0.5*w*(p10+p11-p00-p01);
-      vtx_grads(vid+j,1) = 0.5*w*(p01+p11-p00-p10);
+      vtx_grads(vid+j,0) = 0.5*w_m*(p10+p11-p00-p01);
+      vtx_grads(vid+j,1) = 0.5*w_n*(p01+p11-p00-p10);
       p00 = p01;
       p10 = p11;
     }
   }
 
   // boundaries
-  for(int k=1; k<m_gridSize; ++k)
+  for(int k=1; k<m_gridSize_m; ++k)
   {
-    vtx_grads(make_vtx_index(k,0), 0) = w*(psi(make_face_index(k, 0)) - psi(make_face_index(k-1, 0)));
+    vtx_grads(make_vtx_index(k,0), 0) = w_m*(psi(make_face_index(k, 0)) - psi(make_face_index(k-1, 0)));
     vtx_grads(make_vtx_index(k,0), 1) = 0.;
-    vtx_grads(make_vtx_index(k,m_gridSize), 0) = w*(psi(make_face_index(k, m_gridSize-1)) - psi(make_face_index(k-1, m_gridSize-1)));
-    vtx_grads(make_vtx_index(k,m_gridSize), 1) = 0.;
-
+    vtx_grads(make_vtx_index(k,m_gridSize_n), 0) = w_m*(psi(make_face_index(k, m_gridSize_n-1)) - psi(make_face_index(k-1, m_gridSize_n-1)));
+    vtx_grads(make_vtx_index(k,m_gridSize_n), 1) = 0.;
+  }
+  for(int k=1; k<m_gridSize_n; ++k)
+  {
     vtx_grads(make_vtx_index(0,k), 0) = 0.;
-    vtx_grads(make_vtx_index(0,k), 1) = w*(psi(make_face_index(0, k)) - psi(make_face_index(0, k-1)));
-    vtx_grads(make_vtx_index(m_gridSize,k), 0) = 0;
-    vtx_grads(make_vtx_index(m_gridSize,k), 1) = w*(psi(make_face_index(m_gridSize-1, k)) - psi(make_face_index(m_gridSize-1, k-1)));
+    vtx_grads(make_vtx_index(0,k), 1) = w_n*(psi(make_face_index(0, k)) - psi(make_face_index(0, k-1)));
+    vtx_grads(make_vtx_index(m_gridSize_m,k), 0) = 0;
+    vtx_grads(make_vtx_index(m_gridSize_m,k), 1) = w_n*(psi(make_face_index(m_gridSize_m-1, k)) - psi(make_face_index(m_gridSize_m-1, k-1)));
   }
   // corners
   vtx_grads.row(make_vtx_index(0,0)).setZero();
-  vtx_grads.row(make_vtx_index(m_gridSize,0)).setZero();
-  vtx_grads.row(make_vtx_index(0,m_gridSize)).setZero();
-  vtx_grads.row(make_vtx_index(m_gridSize,m_gridSize)).setZero();
+  vtx_grads.row(make_vtx_index(m_gridSize_m,0)).setZero();
+  vtx_grads.row(make_vtx_index(0,m_gridSize_n)).setZero();
+  vtx_grads.row(make_vtx_index(m_gridSize_m,m_gridSize_n)).setZero();
 }
 
+
 EIGEN_DONT_INLINE
-void compute_face_area(VectorXd& fwd_area, const MatrixX2d& vtx_grads, int grid_size)
+void compute_face_area(VectorXd& fwd_area, const MatrixX2d& vtx_grads, int grid_size_m, int grid_size_n)
 {
   // The following code is SIMD friendly and auto-vectorized by the compiler
-  const double e = 1./double(grid_size);
-  for(int i=0; i<grid_size; ++i){
-    int vid0 = i*(grid_size+1);
-    int vid1 = (i+1)*(grid_size+1);
-    for(int j=0; j<grid_size; ++j){
+  const double e_m = 1./double(grid_size_m);
+  const double e_n = 1./double(grid_size_n);
+  for(int i=0; i<grid_size_m; ++i){
+    int vid0 = i*(grid_size_n+1);
+    int vid1 = (i+1)*(grid_size_n+1);
+    for(int j=0; j<grid_size_n; ++j){
 
-      int id = j+i*grid_size;
+      int id = j + i * grid_size_n;
 
       int v00 = vid0 + j;
       int v10 = vid1 + j;
@@ -446,8 +457,8 @@ void compute_face_area(VectorXd& fwd_area, const MatrixX2d& vtx_grads, int grid_
       int v11 = vid1 + j+1;
 
       // the area of the quad is equal to half the cross product of its diagonal
-      fwd_area(id) = 0.5*(  (vtx_grads(v11,0) - vtx_grads(v00,0) + e) * (vtx_grads(v01,1) - vtx_grads(v10,1) + e)
-                          - (vtx_grads(v11,1) - vtx_grads(v00,1) + e) * (vtx_grads(v01,0) - vtx_grads(v10,0) - e) );
+      fwd_area(id) = 0.5 * ((vtx_grads(v11,0) - vtx_grads(v00,0) + e_n) * (vtx_grads(v01,1) - vtx_grads(v10,1) + e_m)
+                           - (vtx_grads(v11,1) - vtx_grads(v00,1) + e_m) * (vtx_grads(v01,0) - vtx_grads(v10,0) - e_n));
     }
   }
 }
@@ -462,7 +473,7 @@ compute_residual(ConstRefVector psi, Ref<VectorXd> out) const
   compute_vertex_gradients(psi, vtx_grads);
 
   VectorXd &fwd_area(m_cache_residual_fwd_area);
-  compute_face_area(fwd_area, vtx_grads, m_gridSize);
+  compute_face_area(fwd_area, vtx_grads, m_gridSize_m, m_gridSize_n);
 
   out = fwd_area - m_element_area* (*m_input_density);
   double ret = out.squaredNorm() / m_element_area;
@@ -470,74 +481,65 @@ compute_residual(ConstRefVector psi, Ref<VectorXd> out) const
   return ret;
 }
 
-void
-GridBasedTransportSolver::
-compute_1D_problem_parameters(Ref<const VectorXd> psi, Ref<const VectorXd> dir, Ref<VectorXd> a, Ref<VectorXd> b) const
+void GridBasedTransportSolver::compute_1D_problem_parameters(Ref<const VectorXd> psi, Ref<const VectorXd> dir, Ref<VectorXd> a, Ref<VectorXd> b) const
 {
-  // compute a, b, c, such that:
-  // r(psi+t*dir) = a*t^2 + b*t + r(psi)
   int nv = m_mesh->vertices_size();
   MatrixX2d &g0(m_cache_1D_g0);
   MatrixX2d &gd(m_cache_1D_gd);
-  // No need to recompute the vertex gradient at psi,
-  // we already have them from the previous 1D solve.
-  // compute_vertex_gradients(psi, g0);
   compute_vertex_gradients(dir, gd);
-  
+
   using namespace Eigen::internal;
   typedef packet_traits<double>::type Packet;
   const Index PacketSize = packet_traits<double>::size;
-  Index simd_size = (m_gridSize/PacketSize)*PacketSize;
+  Index simd_size = (m_gridSize_n / PacketSize) * PacketSize;
   Packet p05 = pset1<Packet>(0.5);
-  const double e = 1./double(m_gridSize);
-  Packet pe  = pset1<Packet>(e);
+  const double e_m = 1./double(m_gridSize_m);
+  const double e_n = 1./double(m_gridSize_n);
+  Packet pe_m  = pset1<Packet>(e_m);
+  Packet pe_n  = pset1<Packet>(e_n);
 
-  for(int i=0; i<m_gridSize; ++i){
-    int vid0 = i*(m_gridSize+1);
-    int vid1 = (i+1)*(m_gridSize+1);
+  for(int i=0; i<m_gridSize_m; ++i){
+    int vid0 = i*(m_gridSize_n+1);
+    int vid1 = (i+1)*(m_gridSize_n+1);
 
     for(int j=0; j<simd_size; j+=PacketSize){
-      int id = j+i*m_gridSize;
+      int id = j + i * m_gridSize_n;
       int v00 = vid0 + j;
       int v10 = vid1 + j;
       int v01 = vid0 + j+1;
       int v11 = vid1 + j+1;
 
-      Packet diag0a_x = padd(psub(g0.packet<Unaligned>(v11,0), g0.packet<Unaligned>(v00,0)), pe);
-      Packet diag0a_y = padd(psub(g0.packet<Unaligned>(v11,1), g0.packet<Unaligned>(v00,1)), pe);
-      Packet diag0b_x = psub(psub(g0.packet<Unaligned>(v01,0), g0.packet<Unaligned>(v10,0)), pe);
-      Packet diag0b_y = padd(psub(g0.packet<Unaligned>(v01,1), g0.packet<Unaligned>(v10,1)), pe);
+      Packet diag0a_x = padd(psub(g0.packet<Unaligned>(v11,0), g0.packet<Unaligned>(v00,0)), pe_n);
+      Packet diag0a_y = padd(psub(g0.packet<Unaligned>(v11,1), g0.packet<Unaligned>(v00,1)), pe_m);
+      Packet diag0b_x = psub(psub(g0.packet<Unaligned>(v01,0), g0.packet<Unaligned>(v10,0)), pe_n);
+      Packet diag0b_y = padd(psub(g0.packet<Unaligned>(v01,1), g0.packet<Unaligned>(v10,1)), pe_m);
 
       Packet dda_x = psub(gd.packet<Unaligned>(v11,0), gd.packet<Unaligned>(v00,0));
       Packet dda_y = psub(gd.packet<Unaligned>(v11,1), gd.packet<Unaligned>(v00,1));
       Packet ddb_x = psub(gd.packet<Unaligned>(v01,0), gd.packet<Unaligned>(v10,0));
       Packet ddb_y = psub(gd.packet<Unaligned>(v01,1), gd.packet<Unaligned>(v10,1));
 
-      // The comment line corresponds to r(psi), but we already have it at hand
-      // c.writePacket<Unaligned>(id, p05*( diag0a_x * diag0b_y - diag0a_y * diag0b_x ) - pe*pe*m_input_density->packet<Unaligned>(id));
       a.writePacket<Unaligned>(id, pmul(p05, psub(pmul(dda_x, ddb_y), pmul(dda_y, ddb_x))));
-      b.writePacket<Unaligned>(id, pmul(p05, psub(padd(psub(pmul(dda_x, diag0b_y), pmul(dda_y, diag0b_x)), pmul(diag0a_x, ddb_y)), pmul(diag0a_y, ddb_x)) ));
+      b.writePacket<Unaligned>(id, pmul(p05, psub(padd(psub(pmul(dda_x, diag0b_y), pmul(dda_y, diag0b_x)), pmul(diag0a_x, ddb_y)), pmul(diag0a_y, ddb_x))));
     }
 
-    for(int j=simd_size; j<m_gridSize; ++j){
-      int id = j+i*m_gridSize;
+    for(int j=simd_size; j<m_gridSize_n; ++j){
+      int id = j + i * m_gridSize_n;
       int v00 = vid0 + j;
       int v10 = vid1 + j;
       int v01 = vid0 + j+1;
       int v11 = vid1 + j+1;
 
-      double diag0a_x = g0(v11,0) - g0(v00,0) + e;
-      double diag0a_y = g0(v11,1) - g0(v00,1) + e;
-      double diag0b_x = g0(v01,0) - g0(v10,0) - e;
-      double diag0b_y = g0(v01,1) - g0(v10,1) + e;
+      double diag0a_x = g0(v11,0) - g0(v00,0) + e_n;
+      double diag0a_y = g0(v11,1) - g0(v00,1) + e_m;
+      double diag0b_x = g0(v01,0) - g0(v10,0) - e_n;
+      double diag0b_y = g0(v01,1) - g0(v10,1) + e_m;
 
       double dda_x = gd(v11,0) - gd(v00,0);
       double dda_y = gd(v11,1) - gd(v00,1);
       double ddb_x = gd(v01,0) - gd(v10,0);
       double ddb_y = gd(v01,1) - gd(v10,1);
 
-      // the comment line corresponds to r(psi), but we already have it at hand
-      // c(id) = 0.5*( diag0a_x * diag0b_y - diag0a_y * diag0b_x ) - e*e*(*m_input_density)(id);
       a(id) = 0.5*( dda_x * ddb_y - dda_y * ddb_x);
       b(id) = 0.5*( dda_x * diag0b_y - dda_y * diag0b_x  +  diag0a_x * ddb_y - diag0a_y * ddb_x );
     }
@@ -615,14 +617,14 @@ void
 GridBasedTransportSolver::
 compute_transport_cost(const MatrixX2d& vtx_grads, VectorXd &cost) const
 {
-  if(cost.size() != m_gridSize*m_gridSize){
-    cost.resize(m_gridSize*m_gridSize);
+  if(cost.size() != m_gridSize_m*m_gridSize_n){
+    cost.resize(m_gridSize_m*m_gridSize_n);
     cost.setZero();
   }
 
   // For each face
-  for(int i=0; i<m_gridSize; ++i){
-    for(int j=0; j<m_gridSize; ++j){
+  for(int i=0; i<m_gridSize_n; ++i){
+    for(int j=0; j<m_gridSize_m; ++j){
 
       int id = make_face_index(i,j);
 

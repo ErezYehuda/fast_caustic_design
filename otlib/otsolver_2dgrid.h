@@ -52,7 +52,7 @@ public:
   inline void set_verbose_level(int v) { m_verbose_level = v; }
 
   /** Initializes the solver for the given grid size */
-  void init(int n);
+  void init(unsigned int m, unsigned int n);
 
   /** solve for the given density */
   TransportMap solve(Eigen::Ref<const Eigen::VectorXd> density, SolverOptions opt = SolverOptions());
@@ -87,8 +87,8 @@ protected:
 
   /** helper functions */
   inline int pb_size() const { return m_pb_size; }
-  inline int make_face_index(int i, int j) const { return j+i*m_gridSize     ; }
-  inline int make_vtx_index (int i, int j) const { return j+i*(m_gridSize+1) ; }
+  inline int make_face_index(int i, int j) const { return j+i*m_gridSize_m     ; }
+  inline int make_vtx_index (int i, int j) const { return j+i*(m_gridSize_m+1) ; }
 
 protected:
   // the working quad mesh
@@ -98,7 +98,9 @@ protected:
   const Eigen::VectorXd* m_input_density;
 
   double m_element_area; // the initial area of the elements
-  int m_gridSize;
+  int m_gridSize_m;
+  int m_gridSize_n;
+
   int m_pb_size;
 
   // the pseudo-Laplacian matrix passed to the solver

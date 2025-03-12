@@ -10,6 +10,6 @@
 
 namespace otmap {
 
-void nestdiss_ordering(int size, int* perm);
+void nestdiss_ordering(int width, int height, int* perm);
 
 }
