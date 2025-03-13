@@ -100,22 +100,20 @@ void generate_quad_mesh(int m, int n, Surface_mesh &mesh, bool inclusive)
   double dy = 1./double(m-1);
 
   Eigen::Array<Surface_mesh::Vertex,Dynamic,Dynamic> ids(m,n);
-  for(int i=0;i<n;++i)
-    for(int j=0;j<m;++j)
-      if(inclusive)
-        ids(i,j) = mesh.add_vertex(Point((i+0.5)/double(n),(j+0.5)/double(m)));
+  for (int i = 0; i < m; ++i)
+    for (int j = 0; j < n; ++j)
+      if (inclusive)
+        ids(i, j) = mesh.add_vertex(Point((j + 0.5) / double(n), (i + 0.5) / double(m)));
       else
-        ids(i,j) = mesh.add_vertex(Point(double(i)*dx, double(j)*dy));
+        ids(i, j) = mesh.add_vertex(Point(j * dx, i * dy));
 
-
-  for(int i=0; i<n-1; ++i) {
-    for(int j=0; j<m-1; ++j) {
-      Surface_mesh::Vertex v0,v1,v2,v3;
-      v0 = ids(i+0,j+0);
-      v1 = ids(i+1,j+0);
-      v2 = ids(i+1,j+1);
-      v3 = ids(i+0,j+1);
-
+  for (int i = 0; i < m - 1; ++i) {
+    for (int j = 0; j < n - 1; ++j) {
+      Surface_mesh::Vertex v0, v1, v2, v3;
+      v0 = ids(i, j);
+      v1 = ids(i, j + 1);
+      v2 = ids(i + 1, j + 1);
+      v3 = ids(i + 1, j);
       mesh.add_quad(v0, v1, v2, v3);
     }
   }

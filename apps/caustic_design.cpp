@@ -736,7 +736,7 @@ int main(int argc, char** argv)
     std::cout << "Failed to load input \"" << opts.filename_src << "\" -> abort.";
     exit(EXIT_FAILURE);
   }
-    
+  
   if(!load_input_density(opts.filename_trg, density_trg))
   {
     std::cout << "Failed to load input \"" << opts.filename_trg << "\" -> abort.";
@@ -755,7 +755,7 @@ int main(int argc, char** argv)
   TransportMap tmap_trg = runOptimalTransport(rotated_trg, opts);
 
   //Mesh mesh(1.0, 1.0/2, opts.resolution, (int)(opts.resolution/2));
-  Mesh mesh(1.0, 1.0, opts.resolution, opts.resolution);
+  Mesh mesh(1.0, 1.0/2, opts.resolution, opts.resolution/2);
   
   mesh.build_vertex_to_triangles();
 
