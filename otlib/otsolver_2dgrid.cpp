@@ -74,31 +74,26 @@ adjust_density(VectorXd& density, double max_ratio)
 
 void
 GridBasedTransportSolver::
-init(unsigned int m, unsigned int n)
+init(unsigned int cols, unsigned int rows)
 {
-  /*if(m_gridSize==n)
-  {
-    // we're already all set.
-    return;
-  }*/
   if(m_verbose_level>=1)
     std::cout << "Init solver...\n";
   
   BenchTimer timer;
   timer.start();
 
-  m_gridSize_m = m;
-  m_gridSize_n = n;
-  m_pb_size = m*n;
+  m_gridSize_m = cols;
+  m_gridSize_n = rows;
+  m_pb_size = cols*rows;
   
   if(m_mesh!=nullptr) {
     m_mesh.reset(new Surface_mesh);
   } else {
     m_mesh = std::make_shared<Surface_mesh>();
   }
-  generate_quad_mesh(m+1, n+1, *m_mesh);
+  generate_quad_mesh(cols+1, rows+1, *m_mesh);
 
-  m_element_area = 1.0/(double(m)*double(n));
+  m_element_area = 1.0/(double(cols)*double(rows));
   
   this->initialize_laplacian_solver();
   timer.stop();
@@ -218,7 +213,7 @@ GridBasedTransportSolver::solve(ConstRefVector in_density, SolverOptions opt)
     xk.swap(xkp1); // same as xk = xkp1 but faster
 
     timer.stop(); t_linesearch = timer.value(REAL_TIMER); t_linesearch_sum += t_linesearch;
-    print_debuginfo_iteration(it, alpha, beta, d, residual, rkp1, t_linearsolve, t_beta, t_linesearch);
+    //print_debuginfo_iteration(it, alpha, beta, d, residual, rkp1, t_linearsolve, t_beta, t_linesearch);
 
     ++it;
   }
@@ -240,9 +235,9 @@ GridBasedTransportSolver::solve(ConstRefVector in_density, SolverOptions opt)
               <<      "   Linf=" << rkp1.array().maxCoeff()/m_element_area << "\n";
   }
   if(m_verbose_level >= 3) {
-    VectorXd ot_cost_per_face;
-    compute_transport_cost(m_cache_residual_vtx_grads,ot_cost_per_face);
-    std::cout << "  - transport cost=" << ot_cost_per_face.sum() << std::endl;
+    //VectorXd ot_cost_per_face;
+    //compute_transport_cost(m_cache_residual_vtx_grads,ot_cost_per_face);
+    //std::cout << "  - transport cost=" << ot_cost_per_face.sum() << std::endl;
   }
 
   return TransportMap(m_mesh, forward_mesh, p_density);
@@ -415,9 +410,8 @@ compute_vertex_gradients(ConstRefVector psi, MatrixX2d& vtx_grads) const
     }
   }
 
-  // boundaries
-  for(int k=1; k<m_gridSize_m; ++k)
-  {
+  // Ensure correct indexing when accessing boundary vertices and faces
+  for (int k = 1; k < m_gridSize_m; ++k) {
     vtx_grads(make_vtx_index(k,0), 0) = w_m*(psi(make_face_index(k, 0)) - psi(make_face_index(k-1, 0)));
     vtx_grads(make_vtx_index(k,0), 1) = 0.;
     vtx_grads(make_vtx_index(k,m_gridSize_n), 0) = w_m*(psi(make_face_index(k, m_gridSize_n-1)) - psi(make_face_index(k-1, m_gridSize_n-1)));
@@ -430,6 +424,7 @@ compute_vertex_gradients(ConstRefVector psi, MatrixX2d& vtx_grads) const
     vtx_grads(make_vtx_index(m_gridSize_m,k), 0) = 0;
     vtx_grads(make_vtx_index(m_gridSize_m,k), 1) = w_n*(psi(make_face_index(m_gridSize_m-1, k)) - psi(make_face_index(m_gridSize_m-1, k-1)));
   }
+
   // corners
   vtx_grads.row(make_vtx_index(0,0)).setZero();
   vtx_grads.row(make_vtx_index(m_gridSize_m,0)).setZero();
@@ -612,63 +607,4 @@ solve_1D_problem(ConstRefVector xk, ConstRefVector dir, ConstRefVector rk, doubl
   rk1 = a*(alpha*alpha)+b*alpha+rk;       // ~10%
   return rmin/m_element_area; // == rk1.squaredNorm()/m_element_area;
 }
-
-void
-GridBasedTransportSolver::
-compute_transport_cost(const MatrixX2d& vtx_grads, VectorXd &cost) const
-{
-  if(cost.size() != m_gridSize_m*m_gridSize_n){
-    cost.resize(m_gridSize_m*m_gridSize_n);
-    cost.setZero();
-  }
-
-  // For each face
-  for(int i=0; i<m_gridSize_n; ++i){
-    for(int j=0; j<m_gridSize_m; ++j){
-
-      int id = make_face_index(i,j);
-
-      int v1 = make_vtx_index(i,  j);
-      int v2 = make_vtx_index(i+1,j);
-      int v3 = make_vtx_index(i+1,j+1);
-      int v4 = make_vtx_index(i,  j+1);
-
-      double z1 =  sqrt(1./3.)/2.+0.5;
-      double z2 = -sqrt(1./3.)/2.+0.5;
-
-      auto dist2 = [&](double u, double v) {
-        return  ((1-u) * (1-v) * vtx_grads.row(v1)
-              +     u  * (1-v) * vtx_grads.row(v2)
-              +     u  *    v  * vtx_grads.row(v3)
-              +  (1-u) *    v  * vtx_grads.row(v4)).squaredNorm();
-      };
-      cost(id) = (*m_input_density)(id) * m_element_area * (dist2(z1,z1) + dist2(z1,z2) + dist2(z2,z2) + dist2(z2,z1)) / 4.;
-    }
-  }
-}
-
-void
-GridBasedTransportSolver::print_debuginfo_iteration(int /*it*/, double alpha, double beta, ConstRefVector search_dir,
-                               double l2err, ConstRefVector residual,
-                               double t_linearsolve, double t_beta, double t_linesearch) const
-{
-  if(m_verbose_level>=6) {
-    std::cout << "    execution time: search direction = " << t_linearsolve << "s,"
-              << " beta = " << t_beta << "s,"
-              << " line search = " << t_linesearch << "s,"
-              << " [sum = " << t_linearsolve+t_beta+t_linesearch << "s]" << std::endl;
-  }
-  if(m_verbose_level>=5) {
-    std::cout << "    alpha=" << alpha;
-    std::cout << "  beta=" << beta;
-    std::cout << "  norm(d)=" << search_dir.norm();
-    std::cout << "  res^2=" << l2err;
-    std::cout << "  Linf="  << residual.array().maxCoeff()/m_element_area << std::endl;
-  }
-  else if(m_verbose_level>=3)
-  {
-    std::cout << "    L2 residual = " << l2err << std::endl;
-  }
-}
-
 }

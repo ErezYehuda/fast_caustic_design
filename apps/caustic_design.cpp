@@ -754,8 +754,10 @@ int main(int argc, char** argv)
   TransportMap tmap_src = runOptimalTransport(rotated_src, opts);
   TransportMap tmap_trg = runOptimalTransport(rotated_trg, opts);
 
+  tmap_trg.fwd_mesh().write("trg_map.obj");
+
   //Mesh mesh(1.0, 1.0/2, opts.resolution, (int)(opts.resolution/2));
-  Mesh mesh(1.0, 1.0/2, opts.resolution, opts.resolution/2);
+  Mesh mesh(1.0, 1.0, opts.resolution, opts.resolution);
   
   mesh.build_vertex_to_triangles();
 
@@ -764,7 +766,7 @@ int main(int argc, char** argv)
   //export_triangles_to_svg(mesh.source_points, mesh.triangles, 1, 1, opts.resolution, opts.resolution, "../triangles.svg", 0.5);
   //export_grid_to_svg(mesh.source_points, 1, 1, opts.resolution, opts.resolution, "../grid.svg", 0.5);
 
-  scaleAndTranslatePoints(mesh.source_points, opts.mesh_width, opts.mesh_width, opts.mesh_width / opts.resolution);
+  scaleAndTranslatePoints(mesh.source_points, opts.mesh_width, opts.mesh_width, opts.mesh_width / (opts.resolution));
   
   for (int i=0; i<mesh.source_points.size(); i++)
   {
@@ -781,7 +783,7 @@ int main(int argc, char** argv)
     trg_pts.push_back(point);
   }
 
-  //export_grid_to_svg(trg_pts, 1, 0.5, opts.resolution, opts.resolution, "../grid.svg", 0.5);
+  export_grid_to_svg(trg_pts, 1, 1, opts.resolution, opts.resolution, "../grid.svg", 0.5);
 
   std::vector<std::vector<double>> desired_normals;
 

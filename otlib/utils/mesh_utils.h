@@ -30,7 +30,7 @@ bool bilinear_coordinates_in_quad(const Eigen::Vector2d& q, const Eigen::Vector2
 bool inside_quad(const Eigen::Vector2d& q, const Eigen::Vector2d *p);
 
 // generate a regular quad mesh
-void generate_quad_mesh(int m, int n, surface_mesh::Surface_mesh& mesh, bool inclusive = false);
+void generate_quad_mesh(int cols, int rows, surface_mesh::Surface_mesh& mesh, bool inclusive = false);
 
 // removes faces having a zero density
 void prune_empty_faces(surface_mesh::Surface_mesh &mesh, Eigen::VectorXd density);
