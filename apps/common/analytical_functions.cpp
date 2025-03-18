@@ -286,7 +286,7 @@ void eval_func_to_grid(Ref<MatrixXd> density, int fn)
     for(int i=0; i<resX; ++i){
       Eigen::Vector2d p(0.5*dx + double(j)*dx, 0.5*dy + double(i)*dy);
 
-      density(i,j) = func(FuncName::Enum(fn), p);
+      density(i, j) = func(FuncName::Enum(fn), p);
     }
   }
   // scale to [0,1]

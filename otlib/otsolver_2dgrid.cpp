@@ -17,7 +17,6 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "otsolver_2dgrid.h"
-#include "details/nested_dissection.h"
 #include "utils/mesh_utils.h"
 #include "utils/BenchTimer.h"
 #include <Eigen/Eigenvalues>
@@ -82,8 +81,8 @@ init(unsigned int cols, unsigned int rows)
   BenchTimer timer;
   timer.start();
 
-  m_gridSize_m = cols;
-  m_gridSize_n = rows;
+  m_gridSize_m = rows;
+  m_gridSize_n = cols;
   m_pb_size = cols*rows;
   
   if(m_mesh!=nullptr) {
@@ -283,25 +282,26 @@ initialize_laplacian_solver()
     // Make L positive by directly forming  -L:
     double w = -0.5;
     // For each face
-    for(int i=0; i<m_gridSize_n; ++i){
-      for(int j=0; j<m_gridSize_m; ++j){
-        int id = make_face_index(i,j);
+    
+    for (int i = 0; i < m_gridSize_m; ++i) {
+      for (int j = 0; j < m_gridSize_n; ++j) {
+        int id = make_face_index(i, j);
         double sw = 0;
         // Laplacian mask:
         //  2  0  2
         //  0 -8  0  * 1/4
         //  2  0  2 
         // This mask correspond to the used gradient
-        int row_id_1 = i == 0 ? i : i-1;
-        int col_id_1 = j == 0 ? j : j-1;
-        int row_id_2 = i == m_gridSize_n-1 ? i : i+1;
-        int col_id_2 = j == m_gridSize_m-1 ? j : j+1;
+        int row_id_1 = (i == 0) ? i : i - 1;
+        int col_id_1 = (j == 0) ? j : j - 1;
+        int row_id_2 = (i == m_gridSize_m - 1) ? i : i + 1;
+        int col_id_2 = (j == m_gridSize_n - 1) ? j : j + 1;
 
-        L_entries.push_back(Triplet(id, make_face_index(row_id_1, col_id_1), w)); sw+=w;
-        L_entries.push_back(Triplet(id, make_face_index(row_id_1, col_id_2), w)); sw+=w;
-        L_entries.push_back(Triplet(id, make_face_index(row_id_2, col_id_1), w)); sw+=w;
-        L_entries.push_back(Triplet(id, make_face_index(row_id_2, col_id_2), w)); sw+=w;
-        
+        L_entries.push_back(Triplet(id, make_face_index(row_id_1, col_id_1), w)); sw += w;
+        L_entries.push_back(Triplet(id, make_face_index(row_id_1, col_id_2), w)); sw += w;
+        L_entries.push_back(Triplet(id, make_face_index(row_id_2, col_id_1), w)); sw += w;
+        L_entries.push_back(Triplet(id, make_face_index(row_id_2, col_id_2), w)); sw += w;
+
         L_entries.push_back(Triplet(id, id, -sw));
       }
     }
@@ -331,17 +331,9 @@ initialize_laplacian_solver()
     // m_laplacian_solver.cholmod().method[0].ordering = CHOLMOD_GIVEN;
   #endif
 
-    // Compute custom fill-in permutation
-    PermutationMatrix<Dynamic,Dynamic,int> perm(nf);
-    nestdiss_ordering(m_gridSize_n, m_gridSize_m, perm.indices().data());
-    
-    // Apply the permutation to reorder the Laplacian matrix
-    Eigen::SparseMatrix<double> L_permuted = perm * m_mat_L * perm.transpose();
-
     // Now perform analysis and factorization on the permuted matrix
-    m_laplacian_solver.analyzePattern(L_permuted);
-    m_laplacian_solver.factorize(L_permuted);
-
+    m_laplacian_solver.analyzePattern(m_mat_L);
+    m_laplacian_solver.factorize(m_mat_L);
     m_laplacian_solver.compute(m_mat_L);
 
     if(m_laplacian_solver.info()!=Success) {
@@ -432,28 +424,33 @@ compute_vertex_gradients(ConstRefVector psi, MatrixX2d& vtx_grads) const
   vtx_grads.row(make_vtx_index(m_gridSize_m,m_gridSize_n)).setZero();
 }
 
-
 EIGEN_DONT_INLINE
 void compute_face_area(VectorXd& fwd_area, const MatrixX2d& vtx_grads, int grid_size_m, int grid_size_n)
 {
-  // The following code is SIMD friendly and auto-vectorized by the compiler
-  const double e_m = 1./double(grid_size_m);
-  const double e_n = 1./double(grid_size_n);
-  for(int i=0; i<grid_size_m; ++i){
-    int vid0 = i*(grid_size_n+1);
-    int vid1 = (i+1)*(grid_size_n+1);
-    for(int j=0; j<grid_size_n; ++j){
+  const double e_m = 1./double(grid_size_m);  // vertical spacing (y-axis)
+  const double e_n = 1./double(grid_size_n);  // horizontal spacing (x-axis)
 
+  for (int i = 0; i < grid_size_m; ++i) {
+    int vid0 = i * (grid_size_n + 1);
+    int vid1 = (i + 1) * (grid_size_n + 1);
+    for (int j = 0; j < grid_size_n; ++j) {
       int id = j + i * grid_size_n;
 
+      // Vertex indices for the current face (quad)
       int v00 = vid0 + j;
       int v10 = vid1 + j;
-      int v01 = vid0 + j+1;
-      int v11 = vid1 + j+1;
+      int v01 = vid0 + j + 1;
+      int v11 = vid1 + j + 1;
 
-      // the area of the quad is equal to half the cross product of its diagonal
-      fwd_area(id) = 0.5 * ((vtx_grads(v11,0) - vtx_grads(v00,0) + e_n) * (vtx_grads(v01,1) - vtx_grads(v10,1) + e_m)
-                           - (vtx_grads(v11,1) - vtx_grads(v00,1) + e_m) * (vtx_grads(v01,0) - vtx_grads(v10,0) - e_n));
+      // Transformed diagonals with corrected terms
+      double diag1_x = (vtx_grads(v11, 0) - vtx_grads(v00, 0) + e_n);  // Δx (v00 → v11)
+      double diag1_y = (vtx_grads(v11, 1) - vtx_grads(v00, 1) + e_m);  // Δy (v00 → v11)
+
+      double diag2_x = (vtx_grads(v10, 0) - vtx_grads(v01, 0) - e_n);  // Δx (v01 → v10)
+      double diag2_y = (vtx_grads(v10, 1) - vtx_grads(v01, 1) + e_m);  // Δy (v01 → v10)
+
+      // Cross product of diagonals (absolute value for area)
+      fwd_area(id) = 0.5 * std::abs(diag1_x * diag2_y - diag1_y * diag2_x);
     }
   }
 }

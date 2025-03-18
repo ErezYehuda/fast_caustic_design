@@ -87,8 +87,8 @@ protected:
 
   /** helper functions */
   inline int pb_size() const { return m_pb_size; }
-  inline int make_face_index(int i, int j) const { return j+i*m_gridSize_m     ; }
-  inline int make_vtx_index (int i, int j) const { return j+i*(m_gridSize_m+1) ; }
+  inline int make_face_index(int i, int j) const { return i * m_gridSize_n + j; }
+  inline int make_vtx_index (int i, int j) const { return i * (m_gridSize_n + 1) + j ; }
 
 protected:
   // the working quad mesh

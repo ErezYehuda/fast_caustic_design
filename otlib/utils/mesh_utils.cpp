@@ -87,29 +87,29 @@ bool bilinear_coordinates_in_quad(const Eigen::Vector2d& q, const Eigen::Vector2
   return true;
 }
 
-void generate_quad_mesh(int cols, int rows, Surface_mesh &mesh, bool inclusive)
+void generate_quad_mesh(int m, int n, Surface_mesh &mesh, bool inclusive)
 {
   using namespace surface_mesh;
   using namespace Eigen;
 
   mesh.clear();
 
-  mesh.reserve(cols*rows, (cols-1)*rows+ cols*(rows-1), (cols-1)*(rows-1));
+  mesh.reserve(m*n, (m-1)*n+ m*(n-1), (m-1)*(n-1));
 
-  double dx = 1./double(cols-1);
-  double dy = 1./double(rows-1);
+  double dx = 1./double(m-1);
+  double dy = 1./double(n-1);
 
-  Eigen::Array<Surface_mesh::Vertex,Dynamic,Dynamic> ids(cols,rows);
-  for(int i = 0; i < cols; ++i)
-    for(int j = 0; j < rows; ++j)
+  Eigen::Array<Surface_mesh::Vertex,Dynamic,Dynamic> ids(m,n);
+  for(int i = 0; i < m; ++i)
+    for(int j = 0; j < n; ++j)
       if(inclusive)
-        ids(i, j) = mesh.add_vertex(Point((i + 0.5) / double(cols),(j + 0.5) / double(rows)));
+        ids(i, j) = mesh.add_vertex(Point((i + 0.5) / double(m),(j + 0.5) / double(n)));
       else
         ids(i, j) = mesh.add_vertex(Point(double(i) * dx, double(j) * dy));
 
 
-  for(int i=0; i<cols-1; ++i) {
-    for(int j=0; j<rows-1; ++j) {
+  for(int i=0; i<m-1; ++i) {
+    for(int j=0; j<n-1; ++j) {
       Surface_mesh::Vertex v0,v1,v2,v3;
       v0 = ids(i+0,j+0);
       v1 = ids(i+1,j+0);

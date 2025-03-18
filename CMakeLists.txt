@@ -76,7 +76,6 @@ set(OTSOLVER_SRC_FILES
     otlib/transport_map.cpp
     otlib/otsolver_2dgrid.cpp
     otlib/details/line_search.cpp
-    otlib/details/nested_dissection.cpp
     otlib/utils/bvh2d.cpp
     otlib/utils/rasterizer.cpp
     otlib/utils/stochastic_rasterizer.cpp
@@ -87,7 +86,6 @@ set(OTSOLVER_HEADER_FILES
     otlib/transport_map.h
     otlib/otsolver_2dgrid.h
     otlib/details/line_search.h
-    otlib/details/nested_dissection.h
     otlib/utils/bvh2d.h
     otlib/utils/rasterizer.h
     otlib/utils/stochastic_rasterizer.h

@@ -396,7 +396,7 @@ void rotatePoints(std::vector<std::vector<double>>& trg_pts, std::vector<double>
 
 TransportMap runOptimalTransport(MatrixXd &density, CLIopts &opts) {
   GridBasedTransportSolver otsolver;
-  otsolver.set_verbose_level(opts.verbose_level-1);
+  otsolver.set_verbose_level(3);
 
   if(opts.verbose_level>=1)
     std::cout << "Generate transport map...\n";
@@ -704,7 +704,8 @@ void applyTransportMapping(TransportMap &tmap_src, TransportMap &tmap_trg, Matri
 
   TransportMap transport(originMeshPtr, fwdMeshPtr, densityPtr);
   
-  apply_inverse_map(transport, vertex_positions, 3);
+  //apply_inverse_map(transport, vertex_positions, 3); //T(u->v)
+  apply_inverse_map(tmap_trg, vertex_positions, 3); //T(1->v)
 }
 
 int main(int argc, char** argv)
@@ -744,11 +745,11 @@ int main(int argc, char** argv)
   }
 
   // Rotate matrices with an additional X flip
-  Eigen::MatrixXd rotated_src = rotate90ClockwiseAndFlipX(density_src);
-  Eigen::MatrixXd rotated_trg = rotate90ClockwiseAndFlipX(density_trg);
+  //Eigen::MatrixXd rotated_src = rotate90ClockwiseAndFlipX(density_src);
+  //Eigen::MatrixXd rotated_trg = rotate90ClockwiseAndFlipX(density_trg);
 
-  rotated_src = scaleAndTranslate(rotated_src, 0.0, 1.0);
-  rotated_trg = scaleAndTranslate(rotated_trg, 0.0, 1.0);
+  Eigen::MatrixXd rotated_src = scaleAndTranslate(density_src, 0.0, 1.0);
+  Eigen::MatrixXd rotated_trg = scaleAndTranslate(density_trg, 0.0, 1.0);
 
   // Pass the properly rotated matrices
   TransportMap tmap_src = runOptimalTransport(rotated_src, opts);
