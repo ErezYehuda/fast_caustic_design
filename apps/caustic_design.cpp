@@ -394,9 +394,12 @@ void rotatePoints(std::vector<std::vector<double>>& trg_pts, std::vector<double>
     }
 }
 
-TransportMap runOptimalTransport(MatrixXd &density, CLIopts &opts) {
+TransportMap runOptimalTransport(MatrixXd &density, MatrixXd &density_trg, CLIopts &opts) {
   GridBasedTransportSolver otsolver;
   otsolver.set_verbose_level(opts.verbose_level-1);
+
+  std::cout << "source image: " << density.rows() << "x" << density.cols() << std::endl;
+  std::cout << "target image: " << density_trg.rows() << "x" << density_trg.cols() << std::endl;
 
   if(opts.verbose_level>=1)
     std::cout << "Generate transport map...\n";
@@ -404,16 +407,19 @@ TransportMap runOptimalTransport(MatrixXd &density, CLIopts &opts) {
   if(density.maxCoeff()>1.)
     density = density / density.maxCoeff(); //normalize
 
+  if(density_trg.maxCoeff()>1.)
+    density_trg = density_trg / density_trg.maxCoeff(); //normalize
+
   BenchTimer t_solver_init, t_solver_compute, t_generate_uniform;
 
   t_solver_init.start();
-  otsolver.init(density.rows());
+  otsolver.init(density.rows(), density_trg.rows());
   t_solver_init.stop();
 
   std::cout << "init\n";
 
   t_solver_compute.start();
-  TransportMap tmap_src = otsolver.solve(vec(density), opts.solver_opt);
+  TransportMap tmap_src = otsolver.solve(vec(density), vec(density_trg), opts.solver_opt);
   t_solver_compute.stop();
 
   std::cout << "STATS solver -- init: " << t_solver_init.value(REAL_TIMER) << "s  solve: " << t_solver_compute.value(REAL_TIMER) << "s\n";
@@ -745,12 +751,12 @@ int main(int argc, char** argv)
   Eigen::MatrixXd rotated_src = rotate90ClockwiseAndFlipX(density_src);
   Eigen::MatrixXd rotated_trg = rotate90ClockwiseAndFlipX(density_trg);
 
-  rotated_src = scaleAndTranslate(rotated_src, 0.0, 1.0);
-  rotated_trg = scaleAndTranslate(rotated_trg, 0.0, 1.0);
+  //rotated_src = scaleAndTranslate(rotated_src, 0.0, 1.0);
+  //rotated_trg = scaleAndTranslate(rotated_trg, 0.0, 1.0);
 
   // Pass the properly rotated matrices
-  TransportMap tmap_src = runOptimalTransport(rotated_src, opts);
-  TransportMap tmap_trg = runOptimalTransport(rotated_trg, opts);
+  TransportMap tmap_src = runOptimalTransport(rotated_src, rotated_trg, opts);
+  //TransportMap tmap_trg = runOptimalTransport(rotated_trg, opts);
 
   //Mesh mesh(1.0, 1.0/2, opts.resolution, (int)(opts.resolution/2));
   Mesh mesh(1.0, 1.0, opts.resolution, opts.resolution);
@@ -762,7 +768,7 @@ int main(int argc, char** argv)
   //export_triangles_to_svg(mesh.source_points, mesh.triangles, 1, 1, opts.resolution, opts.resolution, "../triangles.svg", 0.5);
   //export_grid_to_svg(mesh.source_points, 1, 1, opts.resolution, opts.resolution, "../grid.svg", 0.5);
 
-  scaleAndTranslatePoints(mesh.source_points, opts.mesh_width, opts.mesh_width, opts.mesh_width / opts.resolution);
+  //scaleAndTranslatePoints(mesh.source_points, opts.mesh_width, opts.mesh_width, opts.mesh_width / opts.resolution);
   
   for (int i=0; i<mesh.source_points.size(); i++)
   {
@@ -770,7 +776,8 @@ int main(int argc, char** argv)
     vertex_positions.push_back(point);
   }
 
-  applyTransportMapping(tmap_src, tmap_trg, density_trg, vertex_positions);
+  apply_forward_map(tmap_src, vertex_positions, 3);
+  //applyTransportMapping(tmap_src, tmap_trg, density_trg, vertex_positions);
   
   std::vector<std::vector<double>> trg_pts;
   for (int i=0; i<mesh.source_points.size(); i++)
@@ -779,9 +786,9 @@ int main(int argc, char** argv)
     trg_pts.push_back(point);
   }
 
-  //export_grid_to_svg(trg_pts, 1, 0.5, opts.resolution, opts.resolution, "../grid.svg", 0.5);
+  export_grid_to_svg(trg_pts, 1, 1, opts.resolution, opts.resolution, "../grid.svg", 0.5);
 
-  std::vector<std::vector<double>> desired_normals;
+  /*std::vector<std::vector<double>> desired_normals;
 
   //scalePoints(trg_pts, {8, 8, 0}, {0.5, 0.5, 0});
   rotatePoints(trg_pts, {0, 0, 0});
@@ -810,5 +817,5 @@ int main(int argc, char** argv)
       normal_int.perform_normal_integration(mesh, normals);
   }
 
-  mesh.save_solid_obj_source(opts.thickness, "../output.obj");
+  mesh.save_solid_obj_source(opts.thickness, "../output.obj");*/
 }

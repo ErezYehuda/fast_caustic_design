@@ -37,8 +37,8 @@ enum struct BetaOpt {
 struct SolverOptions
 {
   BetaOpt beta = BetaOpt::ConjugateJacobian;
-  int max_iter = 1000;
-  double threshold = 1e-7;
+  int max_iter = 100;
+  double threshold = 1e-9;
   double max_ratio = std::numeric_limits<double>::max();
 };
 
@@ -52,12 +52,16 @@ public:
   inline void set_verbose_level(int v) { m_verbose_level = v; }
 
   /** Initializes the solver for the given grid size */
-  void init(int n);
+  void init(int n, int trg_n);
 
   /** solve for the given density */
-  TransportMap solve(Eigen::Ref<const Eigen::VectorXd> density, SolverOptions opt = SolverOptions());
+  TransportMap solve(Eigen::Ref<const Eigen::VectorXd> density, Eigen::Ref<const Eigen::VectorXd> density_trg, SolverOptions opt = SolverOptions());
 
 protected:
+
+  double bilinear_interpolate(const Eigen::VectorXd* v_ptr, const Eigen::Vector2d& p, int n) const;
+  Eigen::Vector2d interpolate_gradient(const Eigen::MatrixX2d& vtx_grads, const Eigen::Vector2d& P) const;
+  Eigen::VectorXd solve_subproblem(const Eigen::VectorXd& psi_init, SolverOptions opt);
 
   typedef Eigen::Ref<const Eigen::VectorXd> ConstRefVector;
   typedef Eigen::Ref<Eigen::VectorXd>       RefVector;
@@ -65,7 +69,7 @@ protected:
   /** Assemble and factorize all operators */
   void initialize_laplacian_solver();
   
-  void adjust_density(Eigen::VectorXd& density, double max_ratio);
+  void adjust_density(Eigen::VectorXd& density, double max_ratio, double element_area);
 
   /** Computes the gradient of each vertex into vtx_grads using psi */
   void compute_vertex_gradients(ConstRefVector psi, Eigen::MatrixX2d& vtx_grads) const;
@@ -96,13 +100,17 @@ protected:
 
   // the input density
   const Eigen::VectorXd* m_input_density;
+  const Eigen::VectorXd* m_target_density;
 
   double m_element_area; // the initial area of the elements
+  double m_element_area_trg;
   int m_gridSize;
+  int m_trg_gridSize;
   int m_pb_size;
 
   // the pseudo-Laplacian matrix passed to the solver
   Eigen::SparseMatrix<double> m_mat_L;
+  Eigen::PermutationMatrix<Eigen::Dynamic,Eigen::Dynamic,int> m_laplacian_perm;
 
   // precomputed Cholesky factorization of L
 #if HAS_CHOLMOD

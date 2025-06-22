@@ -21,6 +21,7 @@
 #include "utils/mesh_utils.h"
 #include "utils/BenchTimer.h"
 #include <Eigen/Eigenvalues>
+#include <Eigen/Dense> 
 
 using namespace Eigen;
 using namespace surface_mesh;
@@ -46,12 +47,12 @@ GridBasedTransportSolver::
 
 void
 GridBasedTransportSolver::
-adjust_density(VectorXd& density, double max_ratio)
+adjust_density(VectorXd& density, double max_ratio, double element_size)
 {
   assert(density.size() == m_pb_size);
 
   // normalise the target so that the integral of density is 1
-  double I = density.sum()*m_element_area;
+  double I = density.sum()*element_size;
   density /= I;
 
   // adjust target ratio
@@ -64,7 +65,7 @@ adjust_density(VectorXd& density, double max_ratio)
 
   if(m_verbose_level >= 2){
     std::cout << "[density]" << std::endl;
-    std::cout << "  - density integral : " << density.sum()*m_element_area << std::endl;
+    std::cout << "  - density integral : " << density.sum()*element_size << std::endl;
     std::cout << "  - density stats : min = " << density.minCoeff()
                                << ", max = " << density.maxCoeff()
                                << ", ratio = " << density.maxCoeff() / density.minCoeff()
@@ -74,7 +75,7 @@ adjust_density(VectorXd& density, double max_ratio)
 
 void
 GridBasedTransportSolver::
-init(int n)
+init(int n, int trg_n)
 {
   /*if(m_gridSize==n)
   {
@@ -88,6 +89,7 @@ init(int n)
   timer.start();
 
   m_gridSize = n;
+  m_trg_gridSize = trg_n;
   m_pb_size = n*n;
   
   if(m_mesh!=nullptr) m_mesh.reset(new Surface_mesh);
@@ -95,6 +97,7 @@ init(int n)
   generate_quad_mesh(n+1, n+1, *m_mesh);
 
   m_element_area = 1.0/(double(n)*double(n));
+  m_element_area_trg = 1.0/(double(trg_n)*double(trg_n));
   
   this->initialize_laplacian_solver();
   timer.stop();
@@ -104,7 +107,7 @@ init(int n)
 }
 
 TransportMap
-GridBasedTransportSolver::solve(ConstRefVector in_density, SolverOptions opt)
+GridBasedTransportSolver::solve(ConstRefVector in_density, ConstRefVector trg_density, SolverOptions opt)
 {
   if(m_verbose_level>=1)
   {
@@ -119,8 +122,14 @@ GridBasedTransportSolver::solve(ConstRefVector in_density, SolverOptions opt)
 
   // prepare target density
   std::shared_ptr<VectorXd> p_density = std::make_shared<VectorXd>(in_density);
-  adjust_density(*p_density, opt.max_ratio);
+  adjust_density(*p_density, opt.max_ratio, m_element_area);
   m_input_density = p_density.get();
+
+  std::shared_ptr<VectorXd> t_density = std::make_shared<VectorXd>(trg_density);
+  adjust_density(*t_density, opt.max_ratio, m_element_area);
+  m_target_density = t_density.get();
+  
+  //m_target_density = new Eigen::VectorXd(Eigen::VectorXd::Ones(t_density.get()->size()));
 
   // initialize cache of vertex gradient at psi=0
   m_cache_1D_g0.setZero(m_mesh->vertices_size(), 2);
@@ -320,6 +329,9 @@ initialize_laplacian_solver()
     // weakly enforce psi(0,0)=0
     m_mat_L.coeffRef(0,0) += std::abs(m_mat_L.coeffRef(0,0))*1e4;
 
+    //double diag_reg = std::abs(m_mat_L.coeffRef(0,0)) * 1e4;
+    //m_mat_L.coeffRef(0, 0) += diag_reg;
+
 
   #if HAS_CHOLMOD
     // configure CHOLMOD for best efficiency on our problem
@@ -338,7 +350,7 @@ initialize_laplacian_solver()
     
     // Apply the permutation to reorder the Laplacian matrix
     Eigen::SparseMatrix<double> L_permuted = perm * m_mat_L * perm.transpose();
-
+ 
     // Now perform analysis and factorization on the permuted matrix
     m_laplacian_solver.analyzePattern(L_permuted);
     m_laplacian_solver.factorize(L_permuted);
@@ -452,7 +464,7 @@ void compute_face_area(VectorXd& fwd_area, const MatrixX2d& vtx_grads, int grid_
   }
 }
 
-double
+/*double
 GridBasedTransportSolver::
 compute_residual(ConstRefVector psi, Ref<VectorXd> out) const
 {
@@ -468,7 +480,7 @@ compute_residual(ConstRefVector psi, Ref<VectorXd> out) const
   double ret = out.squaredNorm() / m_element_area;
 
   return ret;
-}
+}*/
 
 void
 GridBasedTransportSolver::
@@ -609,6 +621,146 @@ solve_1D_problem(ConstRefVector xk, ConstRefVector dir, ConstRefVector rk, doubl
   m_cache_1D_g0 += alpha * m_cache_1D_gd; // ~10%
   rk1 = a*(alpha*alpha)+b*alpha+rk;       // ~10%
   return rmin/m_element_area; // == rk1.squaredNorm()/m_element_area;
+}
+
+// Compute the area of a triangle given 3 points using the shoelace formula
+double triangleArea(const Eigen::Vector2d& a, const Eigen::Vector2d& b, const Eigen::Vector2d& c) {
+    return 0.5 * ((b - a).x() * (c - a).y() - (b - a).y() * (c - a).x());
+}
+
+double integrateScalarOverQuad(const std::vector<Eigen::Vector2d>& verts,
+                             const std::vector<double>& scalars)
+{
+    double area1 = triangleArea(verts[0], verts[1], verts[2]);
+    double area2 = triangleArea(verts[0], verts[2], verts[3]);
+
+    double avg1  = (scalars[0] + scalars[1] + scalars[2]) / 3.0;
+    double avg2  = (scalars[0] + scalars[2] + scalars[3]) / 3.0;
+
+    double totalArea = area1 + area2;
+    return (avg1 * area1 + avg2 * area2) / totalArea;
+}
+
+double
+GridBasedTransportSolver::
+compute_residual(ConstRefVector psi, Ref<VectorXd> out) const
+{
+  unsigned int nv = m_mesh->vertices_size();
+
+  MatrixX2d vtx_grads;
+  compute_vertex_gradients(psi, vtx_grads);
+
+  VectorXd &fwd_area(m_cache_residual_fwd_area);
+  compute_face_area(fwd_area, vtx_grads, m_gridSize);
+
+  const int n = m_gridSize;                          // number of cells in one dimension
+  const int ncells = n * n;                          // total number of cells
+  const double h = 1.0 / double(n);                  // cell width
+  //const double h2 = 1.0/m_element_area;
+
+  out.resize(ncells);
+
+  for (int j = 0; j < n; ++j) {
+    for (int i = 0; i < n; ++i) {
+      const int cell_idx = i + n * j;
+
+      // Grid spacing
+      const double h = 1.0 / n;
+
+      // Cell corners in [0,1]^2
+      Eigen::Vector2d p00((i + 0.0) * h, (j + 0.0) * h);
+      Eigen::Vector2d p10((i + 1.0) * h, (j + 0.0) * h);
+      Eigen::Vector2d p01((i + 0.0) * h, (j + 1.0) * h);
+      Eigen::Vector2d p11((i + 1.0) * h, (j + 1.0) * h);
+
+      // Get ∇ψ at the four corners
+      Eigen::Vector2d g00 = vtx_grads.row((i + 0) + (n + 1) * (j + 0));
+      Eigen::Vector2d g10 = vtx_grads.row((i + 1) + (n + 1) * (j + 0));
+      Eigen::Vector2d g01 = vtx_grads.row((i + 0) + (n + 1) * (j + 1));
+      Eigen::Vector2d g11 = vtx_grads.row((i + 1) + (n + 1) * (j + 1));
+
+      // Compute mapped positions T(x) = x + ∇ψ(x)
+      Eigen::Vector2d y00 = p00 + g00;
+      Eigen::Vector2d y10 = p10 + g10;
+      Eigen::Vector2d y01 = p01 + g01;
+      Eigen::Vector2d y11 = p11 + g11;
+
+      // Interpolate v at each mapped corners 
+      double v00 = bilinear_interpolate(m_target_density, y00, m_trg_gridSize);
+      double v10 = bilinear_interpolate(m_target_density, y10, m_trg_gridSize);
+      double v01 = bilinear_interpolate(m_target_density, y01, m_trg_gridSize);
+      double v11 = bilinear_interpolate(m_target_density, y11, m_trg_gridSize);
+
+      // Compute the integral of u / (v ◦ T) over the cell
+      double u_val = (*m_input_density)[cell_idx];
+      double w00 = u_val / v00;
+      double w10 = u_val / v10;
+      double w01 = u_val / v01;
+      double w11 = u_val / v11;
+      std::vector<Eigen::Vector2d> points = {p00, p10, p11, p01};
+      std::vector<double> scalars = {w00, w10, w11, w01};
+      double rhs_integral = integrateScalarOverQuad(points, scalars);
+
+      // Calculate the residual
+      //out[cell_idx] = fwd_area[cell_idx] - u_val * m_element_area; // This works perfectly for u->1
+      out[cell_idx] = fwd_area[cell_idx] - rhs_integral; // this does not for u->v
+    }
+  }
+
+  double ret = out.squaredNorm()/m_element_area;
+
+  return ret;
+}
+
+// Improved bilinear interpolation with better boundary handling
+double GridBasedTransportSolver::bilinear_interpolate(
+    const Eigen::VectorXd* v_ptr,
+    const Eigen::Vector2d& p_in,
+    int n) const
+{
+  // More robust clamping
+  const double eps = 1e-6;
+  double px = std::min(1.0 - eps, std::max(eps, p_in.x()));
+  double py = std::min(1.0 - eps, std::max(eps, p_in.y()));
+
+  // Map to cell-centered coordinates
+  const double h = 1.0 / n;
+  double x = px / h - 0.5;
+  double y = py / h - 0.5;
+
+  // Floor to get base indices
+  int i = int(std::floor(x));
+  int j = int(std::floor(y));
+
+  // Ensure we don't go out of bounds
+  i = std::max(0, std::min(n-2, i));
+  j = std::max(0, std::min(n-2, j));
+
+  // Fractional parts
+  double tx = x - double(i);
+  double ty = y - double(j);
+  
+  // Clamp to [0,1] for safety
+  tx = std::min(1.0, std::max(0.0, tx));
+  ty = std::min(1.0, std::max(0.0, ty));
+
+  // Get four corner values
+  auto at = [&](int row, int col) -> double {
+    int idx = col + n * row;
+    return (*v_ptr)[idx];
+  };
+
+  double f00 = at(j,   i);
+  double f10 = at(j,   i+1);
+  double f01 = at(j+1, i);
+  double f11 = at(j+1, i+1);
+
+  // Bilinear interpolation
+  double result = (1-tx)*(1-ty)*f00 + tx*(1-ty)*f10 + 
+                  (1-tx)*ty*f01 + tx*ty*f11;
+
+  // Ensure positive result with minimum bound
+  return std::max(1e-8, result);
 }
 
 void

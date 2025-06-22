@@ -46,7 +46,7 @@ bool load_input_density(const std::string& filename, MatrixXd& density)
   return true;
 }
 
-void generate_transport_maps(const std::vector<std::string>& inputs, std::vector<TransportMap>& tmaps, const CLI_OTSolverOptions& opts,
+/*void generate_transport_maps(const std::vector<std::string>& inputs, std::vector<TransportMap>& tmaps, const CLI_OTSolverOptions& opts,
                             std::function<void(Eigen::MatrixXd&)> filter)
 {
   GridBasedTransportSolver otsolver;
@@ -66,7 +66,7 @@ void generate_transport_maps(const std::vector<std::string>& inputs, std::vector
     filter(density);
     tmaps.push_back( otsolver.solve(vec(density), opts.solver_opt) );
   }
-}
+}*/
 
 void synthetize_and_export_image(const Surface_mesh& map, int img_res, const VectorXd& target, const std::string base_filename, const VectorXd& input_density, double gamma)
 {
