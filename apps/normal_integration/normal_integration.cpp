@@ -367,8 +367,7 @@ void normal_integration::initialize_data(Mesh &mesh) {
         neighborMapPerVertex[i] = neighborMap;
         eightNeighborsPerVertex[i] = eightNeighbors;
     }
-
-    vertices = new double[3*mesh.source_points.size()];
+    vertices.resize(3*mesh.source_points.size());
 }
 
 std::vector<std::vector<double>> normal_integration::calculate_vertex_normals(Mesh &mesh) {
@@ -426,7 +425,7 @@ void normal_integration::perform_normal_integration(Mesh &mesh, std::vector<std:
     // iterate over all vertices and add the corresponding residual blocks
     for(uint i=0; i<mesh.source_points.size(); i++)
     {
-        addResidualBlocks(mesh, &prob, i, neighborsPerVertex[i], neighborMapPerVertex[i], mesh.vertex_laplacians[i], vertices, desired_normals[i]);
+        addResidualBlocks(mesh, &prob, i, neighborsPerVertex[i], neighborMapPerVertex[i], mesh.vertex_laplacians[i], vertices.data(), desired_normals[i]);
     }
 
     Solver::Options options;

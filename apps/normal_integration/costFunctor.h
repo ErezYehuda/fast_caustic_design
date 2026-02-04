@@ -46,39 +46,6 @@ template<typename T> T angle(T* v1, T* v2)
     return angle;
 }
 
-template<typename T> std::vector<T> refract_T(
-    const std::vector<T> &surfaceNormal,
-    const std::vector<T>& rayDirection,
-    T n1,  // Index of refraction of the initial medium
-    T n2   // Index of refraction of the second medium
-) {
-    // Calculate the ratio of indices of refraction
-    T nRatio = n1 / n2;
-
-    // Calculate the dot product of surfaceNormal and rayDirection
-    T dotProduct = surfaceNormal[0] * rayDirection[0] +
-                        surfaceNormal[1] * rayDirection[1] +
-                        surfaceNormal[2] * rayDirection[2];
-
-    // Determine the cosine of the incident angle
-    T cosThetaI = -dotProduct;  // Cosine of the angle between the ray and the normal
-
-    // Calculate sin^2(thetaT) using Snell's Law
-    T sin2ThetaT = nRatio * nRatio * (T(1.0) - cosThetaI * cosThetaI);
-
-    // Compute cos(thetaT) for the refracted angle
-    T cosThetaT = ceres::sqrt(T(1.0) - sin2ThetaT);
-
-    // Calculate the refracted ray direction
-    std::vector<T> refractedRay(3);
-    for (int i = 0; i < 3; ++i) {
-        refractedRay[i] = nRatio * rayDirection[i] + 
-                          (nRatio * cosThetaI - cosThetaT) * surfaceNormal[i];
-    }
-
-    return refractedRay;
-}
-
 template<typename T> void normalize(T* v)
 {
     T sum = T(0);
@@ -107,45 +74,6 @@ template<typename T> T evaluateInt(const T* const vertex, const T** neighbors, u
     T x = vertexNormal[0] - T(desiredNormal[0]);
     T y = vertexNormal[1] - T(desiredNormal[1]);
     T z = vertexNormal[2] - T(desiredNormal[2]);
-
-    result[0] = x*T(EINT_WEIGHT);
-    result[1] = y*T(EINT_WEIGHT);
-    result[2] = z*T(EINT_WEIGHT);
-
-    return T(0);
-}
-
-template<typename T> T evaluateInt2(const T* const vertex, const T** neighbors, uint nNeighbors, const vector<int> & neighborMap, const std::vector<double> &desiredNormal, T* result)
-{
-    // -- vertex normal
-    std::vector<T> vertexNormal(3);
-    calcVertexNormal(vertex, vertexNormal, neighbors, neighborMap);
-
-    std::vector<T> incidentLight(3);
-    incidentLight[0] = T(0.0);
-    incidentLight[1] = T(0.0);
-    incidentLight[2] = T(-1.0);
-
-    T r = T(1.49);
-
-    vertexNormal[0] *= T(-1.0);
-    vertexNormal[1] *= T(-1.0);
-    vertexNormal[2] *= T(-1.0);
-
-    std::vector<T> refracted = refract_T(vertexNormal, incidentLight, r, T(1.0));
-
-    refracted[0] /= -(refracted[2] + vertex[2]);
-    refracted[1] /= -(refracted[2] + vertex[2]);
-    refracted[2] /= -(refracted[2] + vertex[2]);
-
-    refracted[0] += vertex[0];
-    refracted[1] += vertex[1];
-    refracted[2] += vertex[2];
-
-    // evaluation
-    T x = refracted[0] - T(desiredNormal[0]);
-    T y = refracted[1] - T(desiredNormal[1]);
-    T z = refracted[2] - T(desiredNormal[2]);
 
     result[0] = x*T(EINT_WEIGHT);
     result[1] = y*T(EINT_WEIGHT);

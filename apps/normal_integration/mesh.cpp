@@ -15,8 +15,6 @@ Mesh::Mesh(double width, double height, int res_x, int res_y)
     //generate_poked_mesh(res_x, res_y, width, height, this->triangles, this->source_points);
     
     build_vertex_to_triangles();
-
-    //this->source_points = circular_transform(this->source_points);
 }
 
 Mesh::Mesh(std::vector<std::vector<double>> new_points, std::vector<std::vector<unsigned int>> new_triangles)
@@ -179,40 +177,6 @@ void Mesh::generate_structured_mesh(int nx, int ny, double width, double height,
             triangles.push_back({idx + nx, idx + 1, idx + nx + 1});
         }
     }
-}
-
-// transforms a square grid into a circular grid -> to support circular lenses in the future
-/*void Mesh::circular_transform(std::vector<std::vector<double>> &input_points) {
-    for (int i = 0; i < input_points.size(); i++) {
-        double x = input_points[i][0] - this->width/2.0f;
-        double y = input_points[i][1] - this->height/2.0f;
-
-        input_points[i][0] = x * sqrt(1.0 - 2.0*(y * y));
-        input_points[i][1] = y * sqrt(1.0 - 2.0*(x * x));
-
-        input_points[i][0] += this->width/2.0f;
-        input_points[i][1] += this->height/2.0f;
-    }
-}*/
-
-std::vector<std::vector<double>> Mesh::circular_transform(std::vector<std::vector<double>> &input_points) {
-    std::vector<std::vector<double>> transformed_points;
-    for (int i = 0; i < input_points.size(); i++) {
-        std::vector<double> transformed_point(3);
-
-        double x = input_points[i][0] - this->width/2.0f;
-        double y = input_points[i][1] - this->height/2.0f;
-
-        transformed_point[0] = x * sqrt(1.0 - 2.0*(y * y));
-        transformed_point[1] = y * sqrt(1.0 - 2.0*(x * x));
-
-        transformed_point[0] += this->width/2.0f;
-        transformed_point[1] += this->height/2.0f;
-        transformed_point[2] = input_points[i][2];
-
-        transformed_points.push_back(transformed_point);
-    }
-    return transformed_points;
 }
 
 // build mapping from vertices to adjecent triangles -> used for creating dual cells

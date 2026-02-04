@@ -215,39 +215,6 @@ struct CLIopts : CLI_OTSolverOptions
   }
 };
 
-template<typename T,typename S>
-T lerp(S u, const T& a0, const T& a1)
-{
-  return (1.-u)*a0 + u*a1;
-}
-
-void interpolate(const std::vector<Surface_mesh> &inv_maps, double alpha, Surface_mesh& result)
-{
-  //clear output
-  result.clear();
-  result = inv_maps[0];
-
-  int nv = result.vertices_size();
-
-  for(int j=0; j<nv; ++j){
-    Surface_mesh::Vertex v(j);
-    // linear interpolation
-    result.position(v) = lerp(alpha,inv_maps[0].position(v),inv_maps[1].position(v));
-  }
-}
-
-void synthetize_and_save_image(const Surface_mesh& map, const std::string& filename, int res, double expected_mean, bool inv)
-{
-  MatrixXd img(res,res);
-  rasterize_image(map, img);
-  img = img * (expected_mean/img.mean());
-
-  if(inv)
-    img = 1.-img.array();
-
-  save_image(filename.c_str(), img);
-}
-
 std::vector<double> normalize_vec(std::vector<double> p1) {
     std::vector<double> vec(3);
     double squared_len = 0;
@@ -262,20 +229,6 @@ std::vector<double> normalize_vec(std::vector<double> p1) {
     }
 
     return vec;
-}
-
-
-// Function to calculate the gradient of f(y, z)
-void gradient(  std::vector<double> source,
-                std::vector<double> interf,
-                std::vector<double> target,
-                double n1, double n2,
-                double & grad_x, double & grad_y) {
-    double d1 = std::sqrt((interf[0] - source[0]) * (interf[0] - source[0]) + (interf[1] - source[1]) * (interf[1] - source[1]) + (interf[2] - source[2]) * (interf[2] - source[2]));
-    double d2 = std::sqrt((target[0] - interf[0]) * (target[0] - interf[0]) + (target[1] - interf[1]) * (target[1] - interf[1]) + (target[2] - interf[2]) * (target[2] - interf[2]));
-
-    grad_x = n1 * (interf[0] - source[0]) / d1 - n2 * (target[0] - interf[0]) / d2;
-    grad_y = n1 * (interf[1] - source[1]) / d1 - n2 * (target[1] - interf[1]) / d2;
 }
 
 void scaleAndTranslatePoints(std::vector<std::vector<double>>& points, double MAX_X, double MAX_Y, double margin) {
@@ -506,152 +459,6 @@ void applyTransportMapping(TransportMap &tmap_src, TransportMap &tmap_trg, Matri
   apply_inverse_map(transport, vertex_positions, 3);
 }
 
-std::vector<double> cross(std::vector<double> v1, std::vector<double> v2){
-  std::vector<double> result(3);
-  result[0] = v1[1]*v2[2] - v1[2]*v2[1];
-  result[1] = v1[2]*v2[0] - v1[0]*v2[2];
-  result[2] = v1[0]*v2[1] - v1[1]*v2[0];
-  return result;
-}
-
-double dot(std::vector<double> a, std::vector<double> b) {
-  return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
-}
-
-std::vector<double> mult(double a, std::vector<double> b) {
-  return {a*b[0], a*b[1], a*b[2]};
-}
-
-std::vector<double> add(std::vector<double> a, std::vector<double> b) {
-  return {a[0] + b[0], a[1] + b[1], a[2] + b[2]};
-}
-
-std::vector<double> sub(std::vector<double> a, std::vector<double> b) {
-  return {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
-}
-
-double magnitude(std::vector<double> a) {
-  return std::sqrt(a[0]*a[0] + a[1]*a[1] + a[2]*a[2]);
-}
-
-// https://stackoverflow.com/questions/29758545/how-to-find-refraction-vector-from-incoming-vector-and-surface-normal
-/*std::vector<double> refract(const std::vector<double>& normal, const std::vector<double>& incident, double n1, double n2) {
-    // Ratio of refractive indices
-    const double n = n1 / n2;
-    // Calculate cos(theta_i), assuming normal and incident are unit vectors
-    const double cosI = -dot(normal, incident);
-    // Calculate sin^2(theta_t) using Snell's law
-    const double sinT2 = n * n * (1.0 - cosI * cosI);
-
-    // Check for Total Internal Reflection (TIR)
-    if (sinT2 > 1.0) {
-        // TIR occurs; return an invalid vector or handle appropriately
-        // return Vector::invalid; // Uncomment if you have a way to represent TIR
-    }
-
-    // Calculate cos(theta_t)
-    const double cosT = sqrt(1.0 - sinT2);
-    // Calculate the refracted direction vector
-    return add(mult(n, incident), mult((n * cosI - cosT), normal));
-}*/
-
-std::vector<double> refract(
-    const std::vector<double>& surfaceNormal,
-    const std::vector<double>& rayDirection,
-    double n1,  // Index of refraction of the initial medium
-    double n2   // Index of refraction of the second medium
-) {
-    // Check that both vectors have three components
-    if (surfaceNormal.size() != 3 || rayDirection.size() != 3) {
-        throw std::invalid_argument("Vectors must have exactly three components.");
-    }
-
-    // Calculate the ratio of indices of refraction
-    double nRatio = n1 / n2;
-
-    // Calculate the dot product of surfaceNormal and rayDirection
-    double dotProduct = surfaceNormal[0] * rayDirection[0] +
-                        surfaceNormal[1] * rayDirection[1] +
-                        surfaceNormal[2] * rayDirection[2];
-
-    // Determine the cosine of the incident angle
-    double cosThetaI = -dotProduct;  // Cosine of the angle between the ray and the normal
-
-    // Calculate sin^2(thetaT) using Snell's Law
-    double sin2ThetaT = nRatio * nRatio * (1.0 - cosThetaI * cosThetaI);
-
-    // Compute cos(thetaT) for the refracted angle
-    double cosThetaT = std::sqrt(1.0 - sin2ThetaT);
-
-    // Calculate the refracted ray direction
-    std::vector<double> refractedRay(3);
-    for (int i = 0; i < 3; ++i) {
-        refractedRay[i] = nRatio * rayDirection[i] +
-                          (nRatio * cosThetaI - cosThetaT) * surfaceNormal[i];
-    }
-
-    return refractedRay;
-}
-
-// https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-plane-and-ray-disk-intersection.html
-bool intersect_plane(const std::vector<double> &n, const std::vector<double> &p0, const std::vector<double> &l0, const std::vector<double> &l, std::vector<double> &intersectionPoint) {
-    double denom = dot(n, l);
-    if (denom > 1e-6) { // Check if ray is not parallel to the plane
-        std::vector<double> p0l0 = sub(p0, l0);
-        double t = dot(p0l0, n) / denom;
-        if (t >= 0) { // Check if intersection is in the positive direction of the ray
-            intersectionPoint[0] = l0[0] + t * l[0];
-            intersectionPoint[1] = l0[1] + t * l[1];
-            intersectionPoint[2] = l0[2] + t * l[2];
-            return true;
-        }
-    }
-    return false;
-}
-
-std::vector<double> calc_plane_normal(const std::vector<double> &A, const std::vector<double> &B, const std::vector<double> &C) {
-    std::vector<double> edge1 = sub(B, A);
-    std::vector<double> edge2 = sub(C, A);
-    std::vector<double> normal = cross(edge1, edge2);
-    return normalize_vec(normal); // Normalize the result to get a unit normal
-}
-
-bool is_boundary_vertex(Mesh &mesh, std::vector<std::pair<int, int>> &adjacent_edges, std::vector<int> &adjacent_triangles, int vertex_index, std::vector<std::pair<int, int>>& boundary_edges) {
-    std::unordered_map<std::pair<int, int>, int, HashPair> edge_triangle_count;
-    for (int triangle_index : adjacent_triangles) {
-        const std::vector<unsigned int>& triangle = mesh.triangles[triangle_index];
-        for (int j = 0; j < 3; ++j) {
-            int v1 = triangle[j];
-            int v2 = triangle[(j + 1) % 3];
-            std::pair<int, int> edge = std::make_pair(std::min(v1, v2), std::max(v1, v2));
-            edge_triangle_count[edge]++;
-        }
-    }
-
-    bool is_boundary = false;
-    for (const auto& edge : adjacent_edges) {
-        if (edge_triangle_count[edge] == 1) { // Boundary edge
-            boundary_edges.push_back(edge);
-            is_boundary = true;
-        }
-    }
-
-    return is_boundary;
-}
-
-void project_onto_boundary(std::vector<double> &point) {
-  point[0] -= 0.5;
-  point[1] -= 0.5;
-
-  double dist = sqrt(pow(point[0], 2) + pow(point[1], 2))*2;
-
-  point[0] /= dist;
-  point[1] /= dist;
-
-  point[0] += 0.5;
-  point[1] += 0.5;
-}
-
 //compute the desired normals
 std::vector<std::vector<double>> fresnelMapping(
   std::vector<std::vector<double>> &vertices,
@@ -662,8 +469,6 @@ std::vector<std::vector<double>> fresnelMapping(
 
     //double boundary_z = -0.1;
 
-    //vector<std::vector<double>> boundary_points;
-
     bool use_point_src = false;
     bool use_reflective_caustics = false;
 
@@ -671,39 +476,6 @@ std::vector<std::vector<double>> fresnelMapping(
     pointLightPosition[0] = 0.5;
     pointLightPosition[1] = 0.5;
     pointLightPosition[2] = 0.5;
-
-    // place initial points on the refractive surface where the light rays enter the material
-    /*if (use_point_src && !use_reflective_caustics) {
-        for(int i = 0; i < vertices.size(); i++) {
-            std::vector<double> boundary_point(3);
-
-            // ray to plane intersection to get the initial points
-            double t = ((boundary_z - pointLightPosition[2]) / (vertices[i][2] - pointLightPosition[2]));
-            boundary_point[0] = pointLightPosition[0] + t*(vertices[i][0] - pointLightPosition[0]);
-            boundary_point[1] = pointLightPosition[1] + t*(vertices[i][1] - pointLightPosition[1]);
-            boundary_point[2] = boundary_z;
-            boundary_points.push_back(boundary_point);
-        }
-    }*/
-
-    // run gradient descent on the boundary points to find their optimal positions such that they satisfy Fermat's principle
-    /*if (!use_reflective_caustics && use_point_src) {
-        for (int i=0; i<boundary_points.size(); i++) {
-            for (int iteration=0; iteration<100000; iteration++) {
-                double grad_x;
-                double grad_y;
-                gradient(pointLightPosition, boundary_points[i], vertices[i], 1.0, refractive_index, grad_x, grad_y);
-
-                boundary_points[i][0] -= 0.1 * grad_x;
-                boundary_points[i][1] -= 0.1 * grad_y;
-
-                // if magintude of both is low enough
-                if (grad_x*grad_x + grad_y*grad_y < 0.000001) {
-                    break;
-                }
-            }
-        }
-    }*/
 
     for(int i = 0; i < vertices.size(); i++) {
         std::vector<double> incidentLight(3);
@@ -817,7 +589,6 @@ int main(int argc, char** argv)
   }
 
   // create triangle mesh that we want to deform into the caustic surface later
-  //Mesh mesh(1.0, 1.0/2, opts.resolution, (int)(opts.resolution/2));
   Mesh mesh(1.0, 1.0, opts.resolution, opts.resolution);
 
   // precompute triangle connectivity information

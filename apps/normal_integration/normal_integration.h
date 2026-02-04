@@ -23,7 +23,7 @@ private:
     std::vector<std::vector<int> > eightNeighborsPerVertex;
     std::vector<std::vector<double>> x_sources;
 
-    double* vertices;
+    std::vector<double> vertices;
 public:
     normal_integration(/* args */);
     ~normal_integration();
