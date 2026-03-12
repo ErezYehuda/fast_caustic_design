@@ -28,7 +28,7 @@ The only libraries you need to install are [Ceres Solver](http://ceres-solver.or
 
 It is however highly recommended to install [SuiteSparse/Cholmod](http://faculty.cse.tamu.edu/davis/suitesparse.html) for higher performance.
 
-### Install dependancies on windows:
+### Install dependencies on Windows:
 Install vcpkg:
 ```bash
 $ cd C:\
@@ -37,13 +37,13 @@ $ cd vcpkg
 $ .\bootstrap-vcpkg.bat
 ```
 
-Install Ceres solver and its dependancies:
+Install Ceres solver and its dependencies:
 ```bash
 $ ./vcpkg.exe install ceres[core] --triplet x64-windows-static
 ```
 
 Install libpng
- and its dependancies:
+ and its dependencies:
 ```bash
 $ vcpkg install libpng --triplet x64-windows-static
 ```
